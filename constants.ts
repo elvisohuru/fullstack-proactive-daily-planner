@@ -11,5 +11,5 @@ export const PREDEFINED_TAGS: string[] = [
 ];
 
 export const STORAGE_KEYS = {
-  APP_STATE: 'proactivePlannerState',
+  AUTH_TOKEN: 'proactivePlannerAuthToken',
 };

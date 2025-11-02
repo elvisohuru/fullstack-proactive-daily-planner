@@ -1,26 +1,24 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
-import Header from './components/Header';
-import ProductivityScore from './components/ProductivityScore';
-import TodaysPlan from './components/TodaysPlan';
-import TaskTimer from './components/TaskTimer';
-import TimeLog from './components/TimeLog';
-import MyGoals from './components/MyGoals';
-import DailyRoutine from './components/DailyRoutine';
-import ReflectionTrigger from './components/ReflectionTrigger';
-import PerformanceHistory from './components/PerformanceHistory';
-import UnplannedTasks from './components/UnplannedTasks';
-import DataAndInsights from './components/DataAndInsights';
-import ProductivityStreak from './components/ProductivityStreak';
+import Auth from './components/Auth';
+import Planner from './components/Planner';
 import CommandPalette from './components/CommandPalette';
+import TaskTimer from './components/TaskTimer';
 import ShutdownRoutine from './components/ShutdownRoutine';
 
+const FullScreenLoader: React.FC<{ message: string }> = ({ message }) => (
+  <div className="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center text-white z-50">
+    <div className="w-16 h-16 border-4 border-slate-500 border-t-calm-blue-500 rounded-full animate-spin mb-4"></div>
+    <p className="text-lg tracking-wider">{message}</p>
+  </div>
+);
+
 function App() {
-  const { theme, initialize, setCommandPaletteOpen } = useAppStore();
+  const { theme, checkAuth, isLoading, isAuthenticated, setCommandPaletteOpen } = useAppStore();
 
   useEffect(() => {
-    initialize();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -30,7 +28,7 @@ function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
-  
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
@@ -45,33 +43,22 @@ function App() {
     };
   }, [setCommandPaletteOpen]);
 
+  if (isLoading) {
+    return <FullScreenLoader message="Loading..." />;
+  }
 
   return (
     <div className="bg-slate-50 dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
-      <Header />
-      <main className="max-w-7xl mx-auto p-4 md:p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          <div className="lg:col-span-3 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <ProductivityScore />
-              <ProductivityStreak />
-            </div>
-            <DailyRoutine />
-            <TodaysPlan />
-          </div>
-          <div className="lg:col-span-2 space-y-6">
-            <MyGoals />
-            <UnplannedTasks />
-            <ReflectionTrigger />
-            <DataAndInsights />
-            <TimeLog />
-            <PerformanceHistory />
-          </div>
-        </div>
-      </main>
-      <TaskTimer />
-      <ShutdownRoutine />
-      <CommandPalette />
+      {isAuthenticated ? <Planner /> : <Auth />}
+      
+      {/* Global components that are available when authenticated */}
+      {isAuthenticated && (
+        <>
+            <TaskTimer />
+            <ShutdownRoutine />
+            <CommandPalette />
+        </>
+      )}
     </div>
   );
 }
