@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,22 +12,23 @@ type Command = {
 };
 
 const CommandPalette: React.FC = () => {
-  const { isCommandPaletteOpen, setCommandPaletteOpen, toggleTheme, exportDataAsJson, setFocusOnElement, theme } = useAppStore();
+  const { isCommandPaletteOpen, setCommandPaletteOpen, toggleTheme, requestExport, setFocusOnElement, theme } = useAppStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    requestExport('json');
+    // We could add a toast notification here to inform the user
+  };
 
   const commands: Command[] = useMemo(() => [
     { id: 'add_task', name: 'Add new task', action: () => setFocusOnElement('new-task-input'), icon: <Plus size={18} />, category: 'Actions' },
     { id: 'add_goal', name: 'Add new goal', action: () => setFocusOnElement('new-goal-input'), icon: <Target size={18} />, category: 'Actions' },
     { id: 'add_routine', name: 'Add new routine', action: () => setFocusOnElement('new-routine-input'), icon: <Repeat size={18} />, category: 'Actions' },
     { id: 'toggle_theme', name: `Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`, action: toggleTheme, icon: theme === 'light' ? <Moon size={18} /> : <Sun size={18} />, category: 'Actions' },
-    { id: 'export_data', name: 'Export Data (JSON)', action: exportDataAsJson, icon: <Download size={18} />, category: 'Actions' },
-    // Future navigation commands can be added here
-    // { id: 'nav_journey', name: 'Go to Journey', action: () => {}, icon: <TrendingUp size={18} />, category: 'Navigation' },
-    // { id: 'nav_reflections', name: 'Go to Reflections', action: () => {}, icon: <BookOpen size={18} />, category: 'Navigation' },
-    // { id: 'nav_analytics', name: 'Go to Analytics', action: () => {}, icon: <BarChart3 size={18} />, category: 'Navigation' },
-  ], [setFocusOnElement, toggleTheme, exportDataAsJson, theme]);
+    { id: 'export_data', name: 'Request Data Export (JSON)', action: handleExport, icon: <Download size={18} />, category: 'Actions' },
+  ], [setFocusOnElement, toggleTheme, requestExport, theme]);
   
   const filteredCommands = useMemo(() => {
     if (!searchTerm) return commands;

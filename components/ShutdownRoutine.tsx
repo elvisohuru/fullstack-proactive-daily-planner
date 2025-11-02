@@ -10,7 +10,7 @@ const ShutdownRoutine: React.FC = () => {
   const [improve, setImprove] = useState('');
   
   const today = getTodayDateString();
-  const hasReflectedToday = useAppStore(state => state.reflections.some(r => r.date === today));
+  const hasReflectedToday = useAppStore(state => state.reflections.data.some(r => r.date === today));
   
   useEffect(() => {
     // If the routine is opened directly to the reflect step (no unfinished tasks),

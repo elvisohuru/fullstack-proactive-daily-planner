@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { useAppStore } from './store/useAppStore';
 import Auth from './components/Auth';
-import Planner from './components/Planner';
 import CommandPalette from './components/CommandPalette';
 import TaskTimer from './components/TaskTimer';
 import ShutdownRoutine from './components/ShutdownRoutine';
+
+const Planner = lazy(() => import('./Planner'));
 
 const FullScreenLoader: React.FC<{ message: string }> = ({ message }) => (
   <div className="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center text-white z-50">
@@ -15,6 +16,20 @@ const FullScreenLoader: React.FC<{ message: string }> = ({ message }) => (
 
 function App() {
   const { theme, checkAuth, isLoading, isAuthenticated, setCommandPaletteOpen } = useAppStore();
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+          })
+          .catch(error => {
+            console.log('ServiceWorker registration failed: ', error);
+          });
+      });
+    }
+  }, []);
 
   useEffect(() => {
     checkAuth();
@@ -49,7 +64,13 @@ function App() {
 
   return (
     <div className="bg-slate-50 dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
-      {isAuthenticated ? <Planner /> : <Auth />}
+      {isAuthenticated ? (
+        <Suspense fallback={<FullScreenLoader message="Loading Planner..." />}>
+          <Planner />
+        </Suspense>
+      ) : (
+        <Auth />
+      )}
       
       {/* Global components that are available when authenticated */}
       {isAuthenticated && (

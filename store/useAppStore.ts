@@ -19,59 +19,24 @@ import {
   User,
   AuthResponse,
   AppDataState,
+  AppStateActions,
+  DashboardLayout,
+  ExportFormat,
+  ExportJob,
+  TwoFactorAuthState,
 } from '../types';
 import { achievementsList } from '../utils/achievements';
-import { api } from '../utils/api';
+import { api, mockWebSocket } from '../utils/api';
 import { STORAGE_KEYS } from '../constants';
 
 
-export interface AppState extends AppDataState {
+export interface AppState extends AppDataState, AppStateActions {
   // Auth State
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-
-  // Actions
-  checkAuth: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  addTask: (text: string, goalId: string | null, priority: TaskPriority, tags: string[]) => void;
-  toggleTask: (id: string) => void;
-  deleteTask: (id: string) => void;
-  updateTask: (id: string, updates: Partial<Pick<Task, 'priority' | 'tags' | 'dependsOn'>>) => void;
-  reorderTasks: (tasks: Task[]) => void;
-  linkTaskToGoal: (taskId: string, goalId: string | null) => void;
-  startTimer: (id: string, type: 'plan' | 'routine', task: string, durationMinutes: number) => void;
-  updateTimer: (updates: Partial<ActiveTask>) => void;
-  finishTimer: () => void;
-  completeActiveTask: () => void;
-  extendTimer: (minutes: number) => void;
-  addLog: (log: Omit<LogEntry, 'id'|'timestamp'|'dateString'>) => void;
-  addGoal: (text: string, category: GoalCategory, deadline: string | null) => void;
-  toggleGoal: (id: string) => void;
-  archiveGoal: (id: string) => void;
-  restoreGoal: (id: string) => void;
-  permanentlyDeleteGoal: (id: string) => void;
-  addRoutineTask: (text: string, goalId: string | null, recurringDays: number[]) => void;
-  toggleRoutineTask: (id: string, skipLog?: boolean) => void;
-  updateRoutineTask: (id: string, updates: Partial<Pick<RoutineTask, 'dependsOn'>>) => void;
-  deleteRoutineTask: (id: string) => void;
-  reorderRoutine: (routine: RoutineTask[]) => void;
-  addUnplannedTask: (text: string) => void;
-  planUnplannedTask: (id: string) => void;
-  deleteUnplannedTask: (id: string) => void;
-  addReflection: (well: string, improve: string) => void;
-  toggleTheme: () => void;
-  startShutdownRoutine: () => void;
-  processUnfinishedTasks: () => void;
-  closeShutdownRoutine: () => void;
-  setShutdownStep: (step: 'review' | 'reflect') => void;
-  setCommandPaletteOpen: (isOpen: boolean) => void;
-  setFocusOnElement: (elementId: string | null) => void;
-  checkAchievements: () => void;
 }
 
 const initialDataState: AppDataState = {
@@ -81,7 +46,7 @@ const initialDataState: AppDataState = {
     routine: [],
     unplannedTasks: [],
     activeTask: null,
-    reflections: [],
+    reflections: { data: [], nextCursor: undefined },
     performanceHistory: [],
     streak: { current: 0, longest: 0, lastActivityDate: null },
     unlockedAchievements: [],
@@ -89,6 +54,14 @@ const initialDataState: AppDataState = {
     shutdownState: { isOpen: false, step: null, unfinishedTasks: [] },
     isCommandPaletteOpen: false,
     focusOnElement: null,
+    dashboardLayout: {
+      left: ['ProductivityScore', 'ProductivityStreak', 'DailyRoutine', 'TodaysPlan'],
+      right: ['MyGoals', 'UnplannedTasks', 'ReflectionTrigger', 'DataAndInsights', 'TimeLog', 'PerformanceHistory']
+    },
+    pushState: { isSubscribed: false, subscription: null, isSupported: false },
+    timeAnalytics: null,
+    exports: { data: [], nextCursor: undefined },
+    twoFactorAuth: { isEnabled: false, isSetupModalOpen: false, setupSecret: null, setupQrCode: null },
 };
 
 
@@ -114,10 +87,12 @@ export const useAppStore = create<AppState>()(
                 isAuthenticated: true,
                 isLoading: false,
                 error: null,
+                twoFactorAuth: { ...initialDataState.twoFactorAuth, isEnabled: response.user.isTwoFactorEnabled },
             });
+            mockWebSocket.connect(token);
             get().checkAchievements();
+            get().initializePush();
           } catch (e) {
-            // Token is invalid or expired
             get().logout();
           }
         } else {
@@ -125,10 +100,39 @@ export const useAppStore = create<AppState>()(
         }
       },
 
-      login: async (email, password) => {
+      login: async (email, password, twoFactorCode) => {
         set({ isLoading: true, error: null });
         try {
-            const response = await api.login(email, password);
+            const response = await api.login(email, password, twoFactorCode);
+            if (response.twoFactorRequired) {
+                set({ isLoading: false, error: null });
+                return response; // Let the UI handle the 2FA step
+            }
+            localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, response.token);
+            set({
+                ...response.data,
+                user: response.user,
+                token: response.token,
+                isAuthenticated: true,
+                isLoading: false,
+                error: null,
+                twoFactorAuth: { ...initialDataState.twoFactorAuth, isEnabled: response.user.isTwoFactorEnabled },
+            });
+            mockWebSocket.connect(response.token);
+            get().checkAchievements();
+            get().initializePush();
+            return response;
+        } catch(e) {
+            const error = e instanceof Error ? e.message : 'Login failed';
+            set({ isLoading: false, error, isAuthenticated: false });
+            throw e;
+        }
+      },
+
+      socialLogin: async (provider) => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await api.socialLogin(provider);
             localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, response.token);
             set({
                 ...response.data,
@@ -138,9 +142,11 @@ export const useAppStore = create<AppState>()(
                 isLoading: false,
                 error: null,
             });
+            mockWebSocket.connect(response.token);
             get().checkAchievements();
+            get().initializePush();
         } catch(e) {
-            const error = e instanceof Error ? e.message : 'Login failed';
+            const error = e instanceof Error ? e.message : `Login with ${provider} failed`;
             set({ isLoading: false, error, isAuthenticated: false });
             throw e;
         }
@@ -159,6 +165,8 @@ export const useAppStore = create<AppState>()(
                 isLoading: false,
                 error: null,
             });
+            mockWebSocket.connect(response.token);
+            get().initializePush();
         } catch(e) {
             const error = e instanceof Error ? e.message : 'Signup failed';
             set({ isLoading: false, error, isAuthenticated: false });
@@ -168,6 +176,7 @@ export const useAppStore = create<AppState>()(
 
       logout: () => {
         localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+        mockWebSocket.disconnect();
         set({
             ...initialDataState,
             user: null,
@@ -176,6 +185,200 @@ export const useAppStore = create<AppState>()(
             isLoading: false,
         });
       },
+
+      forgotPassword: async (email: string) => {
+        set({ isLoading: true, error: null });
+        try {
+            await api.forgotPassword(email);
+            set({ isLoading: false });
+        } catch (e) {
+            const error = e instanceof Error ? e.message : 'Request failed';
+            set({ isLoading: false, error });
+            throw e;
+        }
+      },
+
+      resetPassword: async (token: string, password: string) => {
+          set({ isLoading: true, error: null });
+          try {
+              await api.resetPassword(token, password);
+              set({ isLoading: false });
+          } catch (e) {
+              const error = e instanceof Error ? e.message : 'Password reset failed';
+              set({ isLoading: false, error });
+              throw e;
+          }
+      },
+      
+      // --- 2FA ACTIONS ---
+      open2FASetup: async () => {
+        try {
+          const { secret, qrCode } = await api.setup2FA();
+          set(state => ({
+            twoFactorAuth: {
+              ...state.twoFactorAuth,
+              isSetupModalOpen: true,
+              setupSecret: secret,
+              setupQrCode: qrCode,
+            }
+          }));
+        } catch (error) {
+          console.error("Failed to start 2FA setup:", error);
+        }
+      },
+      
+      close2FASetup: () => {
+        set(state => ({
+          twoFactorAuth: {
+            ...state.twoFactorAuth,
+            isSetupModalOpen: false,
+            setupSecret: null,
+            setupQrCode: null,
+          }
+        }));
+      },
+      
+      verifyAndEnable2FA: async (code: string) => {
+        try {
+          await api.verifyAndEnable2FA(code);
+          set(state => ({
+            twoFactorAuth: {
+              ...state.twoFactorAuth,
+              isEnabled: true,
+              isSetupModalOpen: false,
+              setupSecret: null,
+              setupQrCode: null,
+            },
+            user: state.user ? { ...state.user, isTwoFactorEnabled: true } : null,
+          }));
+        } catch (error) {
+          console.error("Failed to verify 2FA code:", error);
+          throw error;
+        }
+      },
+      
+      disable2FA: async () => {
+        try {
+          await api.disable2FA();
+          set(state => ({
+            twoFactorAuth: {
+              ...state.twoFactorAuth,
+              isEnabled: false,
+            },
+            user: state.user ? { ...state.user, isTwoFactorEnabled: false } : null,
+          }));
+        } catch (error) {
+          console.error("Failed to disable 2FA:", error);
+        }
+      },
+
+
+      // --- DASHBOARD AND PUSH ACTIONS ---
+
+      updateDashboardLayout: (newLayout: DashboardLayout) => {
+        set({ dashboardLayout: newLayout });
+        api.saveDashboardLayout(newLayout); // Fire-and-forget
+      },
+
+      initializePush: async () => {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          console.warn('Push notifications are not supported.');
+          set(state => ({ pushState: { ...state.pushState, isSupported: false } }));
+          return;
+        }
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          set(state => ({
+            pushState: {
+              ...state.pushState,
+              isSupported: true,
+              isSubscribed: !!subscription,
+              subscription: subscription
+            }
+          }));
+        } catch (error) {
+          console.error('Error during push initialization:', error);
+          set(state => ({ pushState: { ...state.pushState, isSupported: false } }));
+        }
+      },
+      
+      subscribeToPushNotifications: async () => {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: 'BGl_eUAn82I-6PQTAmh0scL62o_pI5RkPnHlAb8Dopvdbnp-xy21-gUSJ92pL0oT9fPnHr_Qz_2X5nJDApSviXA'
+          });
+          await api.subscribeToPush(subscription);
+          set(state => ({
+            pushState: { ...state.pushState, isSubscribed: true, subscription }
+          }));
+        } catch (error) {
+          console.error('Failed to subscribe to push notifications:', error);
+        }
+      },
+      
+      unsubscribeFromPushNotifications: async () => {
+        const { pushState } = get();
+        if (pushState.subscription) {
+          try {
+            await pushState.subscription.unsubscribe();
+            await api.unsubscribeFromPush(pushState.subscription.endpoint);
+            set(state => ({
+              pushState: { ...state.pushState, isSubscribed: false, subscription: null }
+            }));
+          } catch (error) {
+            console.error('Failed to unsubscribe:', error);
+          }
+        }
+      },
+
+      fetchTimeAnalytics: async () => {
+        try {
+          const analyticsData = await api.getTimeAnalytics();
+          set({ timeAnalytics: analyticsData });
+        } catch (error) {
+          console.error('Failed to fetch time analytics:', error);
+        }
+      },
+      
+      requestExport: async (format: ExportFormat) => {
+        try {
+          await api.requestExport(format);
+        } catch (error) {
+          console.error(`Failed to request ${format} export:`, error);
+        }
+      },
+
+      fetchExports: async (cursor) => {
+        try {
+          const { jobs, nextCursor } = await api.fetchExports(cursor);
+           set(state => ({
+            exports: {
+              data: cursor ? [...state.exports.data, ...jobs] : jobs,
+              nextCursor,
+            }
+          }));
+        } catch (error) {
+          console.error('Failed to fetch exports:', error);
+        }
+      },
+      
+      fetchReflections: async (options) => {
+        try {
+          const { reflections, nextCursor } = await api.fetchReflections(options);
+          set(state => ({
+            reflections: {
+              data: options?.cursor ? [...state.reflections.data, ...reflections] : reflections,
+              nextCursor,
+            }
+          }));
+        } catch (error) {
+          console.error('Failed to fetch reflections:', error);
+        }
+      },
+
 
       // --- APP ACTIONS ---
       addTask: (text, goalId, priority, tags) => {
@@ -431,7 +634,10 @@ export const useAppStore = create<AppState>()(
           improve,
         };
         set((state) => ({
-          reflections: [newReflection, ...state.reflections.filter(r => r.date !== newReflection.date)]
+          reflections: {
+            ...state.reflections,
+            data: [newReflection, ...state.reflections.data.filter(r => r.date !== newReflection.date)]
+          }
         }));
         get().closeShutdownRoutine();
       },
@@ -445,7 +651,7 @@ export const useAppStore = create<AppState>()(
       startShutdownRoutine: () => {
         const { plan, reflections } = get();
         const unfinishedTasks = plan.tasks.filter(t => !t.completed);
-        const hasReflected = reflections.some(r => r.date === getTodayDateString());
+        const hasReflected = reflections.data.some(r => r.date === getTodayDateString());
 
         if (unfinishedTasks.length > 0) {
             set({ shutdownState: { isOpen: true, step: 'review', unfinishedTasks } });
@@ -499,3 +705,15 @@ export const useAppStore = create<AppState>()(
       },
     })
 );
+
+// --- WebSocket Event Listener ---
+// FIX: The `on` method did not exist on the mockWebSocket type. This is fixed in `utils/api.ts` by creating a manual event emitter.
+mockWebSocket.on('export:updated', (updatedJob: ExportJob) => {
+    console.log('WebSocket event received: export:updated', updatedJob);
+    useAppStore.setState(state => ({
+        exports: {
+          ...state.exports,
+          data: state.exports.data.map(job => job.id === updatedJob.id ? updatedJob : job),
+        }
+    }));
+});

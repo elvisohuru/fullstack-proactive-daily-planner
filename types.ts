@@ -101,6 +101,45 @@ export type ShutdownState = {
   unfinishedTasks: Task[];
 };
 
+// New types for customizable dashboards
+export type DashboardComponentId = 'ProductivityScore' | 'ProductivityStreak' | 'DailyRoutine' | 'TodaysPlan' | 'MyGoals' | 'UnplannedTasks' | 'ReflectionTrigger' | 'DataAndInsights' | 'TimeLog' | 'PerformanceHistory';
+export type DashboardLayout = {
+  left: DashboardComponentId[];
+  right: DashboardComponentId[];
+};
+
+// New types for Push Notifications
+export type PushNotificationState = {
+  isSubscribed: boolean;
+  subscription: PushSubscription | null;
+  isSupported: boolean;
+};
+
+// New types for Time Analytics
+export type TimeAnalyticsData = {
+  byGoal: { goalId: string; goalText: string; duration: number }[];
+  byTag: { tag: string; duration: number }[];
+};
+
+// New types for async exports
+export type ExportFormat = 'json' | 'markdown' | 'csv-tasks' | 'csv-goals' | 'csv-routine' | 'csv-logs';
+export type ExportStatus = 'pending' | 'processing' | 'complete' | 'failed';
+export type ExportJob = {
+  id: string;
+  format: ExportFormat;
+  status: ExportStatus;
+  createdAt: string;
+  downloadUrl?: string;
+};
+
+// New types for 2FA
+export type TwoFactorAuthState = {
+  isEnabled: boolean;
+  isSetupModalOpen: boolean;
+  setupSecret: string | null;
+  setupQrCode: string | null;
+};
+
 // New type for App Data State to resolve circular dependency
 export type AppDataState = {
   plan: TodaysPlan;
@@ -109,7 +148,7 @@ export type AppDataState = {
   routine: RoutineTask[];
   unplannedTasks: UnplannedTask[];
   activeTask: ActiveTask | null;
-  reflections: Reflection[];
+  reflections: { data: Reflection[], nextCursor?: string };
   performanceHistory: PerformanceRecord[];
   streak: Streak;
   unlockedAchievements: string[];
@@ -117,27 +156,54 @@ export type AppDataState = {
   shutdownState: ShutdownState;
   isCommandPaletteOpen: boolean;
   focusOnElement: string | null;
+  dashboardLayout: DashboardLayout;
+  pushState: PushNotificationState;
+  timeAnalytics: TimeAnalyticsData | null;
+  exports: { data: ExportJob[], nextCursor?: string };
+  twoFactorAuth: TwoFactorAuthState;
 };
 
 // New types for Authentication
 export type User = {
   id: string;
   email: string;
+  isTwoFactorEnabled: boolean;
 };
 
 export type AuthResponse = {
   user: User;
   token: string;
-  // FIX: Replaced Omit<AppState, ...> with AppDataState to avoid circular dependency.
   data: AppDataState;
+  twoFactorRequired?: boolean;
 };
 
 export type AppStateActions = {
   // Auth actions
   checkAuth: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, twoFactorCode?: string) => Promise<AuthResponse>;
   signup: (email: string, password: string) => Promise<void>;
+  socialLogin: (provider: 'google' | 'github') => Promise<void>;
   logout: () => void;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (token: string, password: string) => Promise<void>;
+  // 2FA Actions
+  open2FASetup: () => Promise<void>;
+  close2FASetup: () => void;
+  verifyAndEnable2FA: (code: string) => Promise<void>;
+  disable2FA: () => Promise<void>;
+  // Dashboard layout
+  updateDashboardLayout: (newLayout: DashboardLayout) => void;
+  // Push Notifications
+  initializePush: () => void;
+  subscribeToPushNotifications: () => Promise<void>;
+  unsubscribeFromPushNotifications: () => Promise<void>;
+  // Time Analytics
+  fetchTimeAnalytics: () => Promise<void>;
+  // Exports
+  requestExport: (format: ExportFormat) => Promise<void>;
+  fetchExports: (cursor?: string) => Promise<void>;
+  // Reflections
+  fetchReflections: (options?: { cursor?: string, search?: string }) => Promise<void>;
   // Other actions...
   addTask: (text: string, goalId: string | null, priority: TaskPriority, tags: string[]) => void;
   toggleTask: (id: string) => void;

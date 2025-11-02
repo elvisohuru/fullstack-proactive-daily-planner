@@ -1,0 +1,49 @@
+# docker-compose.yml
+# Defines the multi-container application environment for local development.
+# Run `docker-compose up` to start all services.
+
+version: '3.8'
+
+services:
+  # The API Service (Our Node.js Backend)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000" # Map host port 3000 to container port 3000
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/plannerdb
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
+    volumes:
+      # Mount the current directory into the container for hot-reloading during development
+      # For production, this line would be removed.
+      - .:/app 
+
+  # The PostgreSQL Database Service
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=plannerdb
+    volumes:
+      # Persist database data on the host machine
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Expose the database to the host machine for debugging
+
+  # The Redis Service for Caching and Queues
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+volumes:
+  # Define the named volume for PostgreSQL data persistence
+  postgres_data:

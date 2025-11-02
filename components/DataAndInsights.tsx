@@ -1,17 +1,23 @@
-
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Award, BookOpen, BarChart3 } from 'lucide-react';
+import { Award, BookOpen, BarChart3, Clock, Download, Settings as SettingsIcon } from 'lucide-react';
 import Achievements from './Achievements';
 import PastReflections from './PastReflections';
 import AdvancedAnalytics from './AdvancedAnalytics';
+import TimeAnalytics from './TimeAnalytics';
+import Exports from './Exports';
+import Settings from './Settings';
 
-type Tab = 'achievements' | 'reflections' | 'analytics';
+
+type Tab = 'achievements' | 'reflections' | 'analytics' | 'time' | 'exports' | 'settings';
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'achievements', label: 'Achievements', icon: <Award size={18} /> },
   { id: 'reflections', label: 'Reflections', icon: <BookOpen size={18} /> },
   { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={18} /> },
+  { id: 'time', label: 'Time', icon: <Clock size={18} /> },
+  { id: 'exports', label: 'Exports', icon: <Download size={18} /> },
+  { id: 'settings', label: 'Settings', icon: <SettingsIcon size={18} /> },
 ];
 
 const DataAndInsights: React.FC = () => {
@@ -19,20 +25,20 @@ const DataAndInsights: React.FC = () => {
 
   return (
     <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
-      <div className="flex justify-between items-center mb-4 border-b border-slate-200 dark:border-slate-700">
+      <div className="mb-4 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
         <div className="flex gap-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+              className={`relative flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors flex-shrink-0 ${
                 activeTab === tab.id
                   ? 'text-calm-blue-600 dark:text-calm-blue-400'
                   : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
               }`}
             >
               {tab.icon}
-              {tab.label}
+              <span className="hidden sm:inline">{tab.label}</span>
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="underline"
@@ -56,6 +62,9 @@ const DataAndInsights: React.FC = () => {
             {activeTab === 'achievements' && <Achievements />}
             {activeTab === 'reflections' && <PastReflections />}
             {activeTab === 'analytics' && <AdvancedAnalytics />}
+            {activeTab === 'time' && <TimeAnalytics />}
+            {activeTab === 'exports' && <Exports />}
+            {activeTab === 'settings' && <Settings />}
           </motion.div>
         </AnimatePresence>
       </div>
