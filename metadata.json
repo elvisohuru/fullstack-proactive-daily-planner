@@ -1,0 +1,5 @@
+{
+  "name": "fullstack- of Proactive Daily Planner",
+  "description": "A proactive daily progress tracker where users define their 100% each morning via tasks. Productivity is measured by completion percentage, not just time spent. The app aims for a calm, intentional, and motivating user experience.",
+  "requestFramePermissions": []
+}
